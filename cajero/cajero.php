@@ -46,6 +46,10 @@ $mesas = $stmt_mesas->fetchAll(PDO::FETCH_ASSOC);
 $sql_productos = "SELECT * FROM productos ORDER BY categoria, nombre";
 $stmt_productos = $pdo->query($sql_productos);
 $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
+
+// Obtener garzones para el filtro del historial
+$sql_garzones = "SELECT id, nombre FROM usuarios WHERE rol = 'garzon' AND activo = true ORDER BY nombre";
+$garzones = $pdo->query($sql_garzones)->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -321,6 +325,10 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
             border-color: #28a745;
             background: #f0fff4;
         }
+        .pedido-card.historial {
+            border-color: #17a2b8;
+            background: #f0f9ff;
+        }
         .producto-card {
             background: white;
             border: 1px solid #dee2e6;
@@ -433,6 +441,16 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
         .item-categoria:last-child {
             border-bottom: none;
         }
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+        .item-pedido {
+            transition: background-color 0.3s;
+        }
+        .item-pedido:hover {
+            background-color: #f8f9fa;
+        }
     </style>
 </head>
 <body>
@@ -446,6 +464,7 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
 
     <div class="nav-tabs">
         <button class="nav-tab active" onclick="mostrarTab('pedidos')">📋 Pedidos Pendientes</button>
+        <button class="nav-tab" onclick="mostrarTab('historial')">📊 Historial de Pagos</button>        
         <button class="nav-tab" onclick="mostrarTab('mesas')">🍽️ Gestión de Mesas</button>
         <button class="nav-tab" onclick="mostrarTab('menu')">📖 Gestión de Menú</button>
     </div>
@@ -559,13 +578,75 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
                                         <h3 class="text-success">Total: Bs/ <?php echo $pedido['total']; ?></h3>
                                     </div>
 
-                                    <!-- Botón para ver detalles y pagar -->
-                                    <button class="btn btn-success btn-block" onclick="mostrarDetallesPago(<?php echo $pedido['id']; ?>)">
-                                        💳 Ver Detalles y Pagar
-                                    </button>
+                                    <!-- Botones para editar, eliminar y pagar -->
+                                    <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;">
+                                        <button class="btn btn-warning" onclick="editarPedido(<?php echo $pedido['id']; ?>)">
+                                            ✏️ Editar
+                                        </button>
+                                        <button class="btn btn-danger" onclick="eliminarPedido(<?php echo $pedido['id']; ?>)">
+                                            🗑️ Eliminar
+                                        </button>
+                                        <button class="btn btn-success" onclick="mostrarDetallesPago(<?php echo $pedido['id']; ?>)">
+                                            💳 Pagar
+                                        </button>
+                                    </div>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Historial de Pagos -->
+        <div id="historial" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>📊 Historial de Pedidos Pagados</h2>
+                </div>
+                <div class="card-body">
+                    <!-- Filtros -->
+                    <div class="grid grid-4" style="margin-bottom: 1rem; gap: 1rem;">
+                        <div class="form-group">
+                            <label>Fecha Inicio:</label>
+                            <input type="date" id="fecha_inicio" class="form-control" value="<?php echo date('Y-m-01'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha Fin:</label>
+                            <input type="date" id="fecha_fin" class="form-control" value="<?php echo date('Y-m-d'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Mesa:</label>
+                            <select id="filtro_mesa" class="form-control">
+                                <option value="">Todas las mesas</option>
+                                <?php foreach ($mesas as $mesa): ?>
+                                    <option value="<?php echo $mesa['id']; ?>">Mesa <?php echo $mesa['numero']; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Garzón:</label>
+                            <select id="filtro_garzon" class="form-control">
+                                <option value="">Todos los garzones</option>
+                                <?php foreach ($garzones as $garzon): ?>
+                                    <option value="<?php echo $garzon['id']; ?>"><?php echo $garzon['nombre']; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <button class="btn btn-primary" onclick="filtrarHistorial()">🔍 Filtrar</button>
+                        <button class="btn" onclick="limpiarFiltros()">🔄 Limpiar</button>
+                        <button class="btn btn-success" onclick="exportarHistorial()">📊 Exportar a Excel</button>
+                    </div>
+                    
+                    <!-- Resultados -->
+                    <div id="resultados-historial">
+                        <div class="empty-state">
+                            <h3>Seleccione filtros y haga clic en "Filtrar"</h3>
+                            <p>Los resultados aparecerán aquí</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -803,6 +884,41 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
+    <!-- Modal para Editar Pedido -->
+    <div id="modalEditarPedido" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h3 id="tituloModalEditarPedido">✏️ Editar Pedido</h3>
+            <div id="detalles-editar-pedido" class="card-body"></div>
+            
+            <form id="formEditarPedido">
+                <input type="hidden" id="pedido_id_editar" name="pedido_id">
+                
+                <div class="form-group">
+                    <label>Productos del Pedido:</label>
+                    <div id="lista-productos-pedido" class="items-list" style="max-height: 300px;">
+                        <!-- Los productos se cargarán aquí dinámicamente -->
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Agregar Producto:</label>
+                    <div class="grid grid-3" style="gap: 0.5rem; margin-bottom: 1rem;">
+                        <select id="nuevo_producto" class="form-control">
+                            <option value="">Seleccionar producto</option>
+                        </select>
+                        <input type="number" id="nueva_cantidad" class="form-control" min="1" value="1" placeholder="Cantidad">
+                        <button type="button" class="btn btn-primary" onclick="agregarProductoAlPedido()">➕ Agregar</button>
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger" onclick="cerrarModalEditarPedido()">Cancelar</button>
+                    <button type="submit" class="btn btn-success">💾 Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="cajero.js"></script>
     <script>
         // Navegación entre tabs
@@ -815,6 +931,11 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
             });
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
+            
+            // Si es la pestaña de historial, cargar los datos
+            if (tabName === 'historial') {
+                filtrarHistorial();
+            }
         }
 
         // Modal functions
@@ -847,6 +968,254 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
 
         function cerrarModalPago() {
             document.getElementById('modalPago').classList.remove('active');
+        }
+
+        function mostrarModalEditarPedido(data) {
+            const pedido = data.pedido;
+            const items = data.items;
+            const productos = data.productos;
+            
+            document.getElementById('tituloModalEditarPedido').textContent = `✏️ Editar Pedido - Mesa ${pedido.mesa_numero}`;
+            document.getElementById('pedido_id_editar').value = pedido.id;
+            
+            // Mostrar información del pedido
+            document.getElementById('detalles-editar-pedido').innerHTML = `
+                <div class="grid grid-2">
+                    <div>
+                        <h4>🍽️ Mesa ${pedido.mesa_numero}</h4>
+                        <p><strong>Garzón:</strong> ${pedido.garzon_nombre}</p>
+                        <p><strong>Estado:</strong> ${pedido.estado}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <h3 class="text-success">Total: Bs/ ${pedido.total}</h3>
+                    </div>
+                </div>
+            `;
+            
+            // Cargar productos en el select
+            const selectProductos = document.getElementById('nuevo_producto');
+            selectProductos.innerHTML = '<option value="">Seleccionar producto</option>';
+            productos.forEach(producto => {
+                const option = document.createElement('option');
+                option.value = producto.id;
+                option.textContent = `${producto.nombre} - Bs/ ${producto.precio}`;
+                option.setAttribute('data-precio', producto.precio);
+                selectProductos.appendChild(option);
+            });
+            
+            // Cargar items actuales del pedido
+            cargarItemsPedido(items);
+            
+            document.getElementById('modalEditarPedido').classList.add('active');
+        }
+
+        function cargarItemsPedido(items) {
+            const contenedor = document.getElementById('lista-productos-pedido');
+            contenedor.innerHTML = '';
+            
+            if (items.length === 0) {
+                contenedor.innerHTML = '<p class="empty-state">No hay productos en este pedido</p>';
+                return;
+            }
+            
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'item-pedido';
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.padding = '0.5rem';
+                div.style.borderBottom = '1px solid #eee';
+                div.innerHTML = `
+                    <div>
+                        <strong>${item.producto_nombre}</strong><br>
+                        <small>Cantidad: ${item.cantidad} x Bs/ ${item.precio_unitario} = Bs/ ${(item.cantidad * item.precio_unitario).toFixed(2)}</small>
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="eliminarItemPedido(${index})">🗑️</button>
+                    <input type="hidden" name="items[${index}][producto_id]" value="${item.producto_id}">
+                    <input type="hidden" name="items[${index}][cantidad]" value="${item.cantidad}">
+                    <input type="hidden" name="items[${index}][precio_unitario]" value="${item.precio_unitario}">
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+
+        function agregarProductoAlPedido() {
+            const select = document.getElementById('nuevo_producto');
+            const cantidadInput = document.getElementById('nueva_cantidad');
+            const productoId = select.value;
+            const cantidad = parseInt(cantidadInput.value);
+            
+            if (!productoId || cantidad < 1) {
+                alert('❌ Por favor seleccione un producto y una cantidad válida');
+                return;
+            }
+            
+            const productoNombre = select.options[select.selectedIndex].text;
+            const precio = parseFloat(select.options[select.selectedIndex].getAttribute('data-precio'));
+            
+            const contenedor = document.getElementById('lista-productos-pedido');
+            const items = contenedor.querySelectorAll('.item-pedido');
+            const nuevoIndex = items.length;
+            
+            const div = document.createElement('div');
+            div.className = 'item-pedido';
+            div.style.display = 'flex';
+            div.style.justifyContent = 'space-between';
+            div.style.alignItems = 'center';
+            div.style.padding = '0.5rem';
+            div.style.borderBottom = '1px solid #eee';
+            div.innerHTML = `
+                <div>
+                    <strong>${productoNombre}</strong><br>
+                    <small>Cantidad: ${cantidad} x Bs/ ${precio} = Bs/ ${(cantidad * precio).toFixed(2)}</small>
+                </div>
+                <button type="button" class="btn btn-danger btn-sm" onclick="eliminarItemPedido(${nuevoIndex})">🗑️</button>
+                <input type="hidden" name="items[${nuevoIndex}][producto_id]" value="${productoId}">
+                <input type="hidden" name="items[${nuevoIndex}][cantidad]" value="${cantidad}">
+                <input type="hidden" name="items[${nuevoIndex}][precio_unitario]" value="${precio}">
+            `;
+            
+            contenedor.appendChild(div);
+            
+            // Limpiar formulario
+            select.value = '';
+            cantidadInput.value = '1';
+        }
+
+        function eliminarItemPedido(index) {
+            const items = document.querySelectorAll('.item-pedido');
+            if (items[index]) {
+                items[index].remove();
+                
+                // Reindexar los items restantes
+                const itemsRestantes = document.querySelectorAll('.item-pedido');
+                itemsRestantes.forEach((item, newIndex) => {
+                    const inputs = item.querySelectorAll('input[type="hidden"]');
+                    inputs[0].name = `items[${newIndex}][producto_id]`;
+                    inputs[1].name = `items[${newIndex}][cantidad]`;
+                    inputs[2].name = `items[${newIndex}][precio_unitario]`;
+                    
+                    const boton = item.querySelector('button');
+                    boton.setAttribute('onclick', `eliminarItemPedido(${newIndex})`);
+                });
+            }
+        }
+
+        function cerrarModalEditarPedido() {
+            document.getElementById('modalEditarPedido').classList.remove('active');
+        }
+
+        // Formulario para editar pedido
+        document.getElementById('formEditarPedido').addEventListener('submit', function(e) {
+            e.preventDefault();
+            guardarCambiosPedido();
+        });
+
+        function guardarCambiosPedido() {
+            const formData = new FormData(document.getElementById('formEditarPedido'));
+            const pedidoId = formData.get('pedido_id');
+            
+            // Recopilar items del pedido
+            const items = [];
+            const itemElements = document.querySelectorAll('.item-pedido');
+            
+            itemElements.forEach(item => {
+                const inputs = item.querySelectorAll('input[type="hidden"]');
+                items.push({
+                    producto_id: inputs[0].value,
+                    cantidad: parseInt(inputs[1].value),
+                    precio_unitario: parseFloat(inputs[2].value)
+                });
+            });
+            
+            if (items.length === 0) {
+                alert('❌ El pedido debe tener al menos un producto');
+                return;
+            }
+            
+            const btn = document.querySelector('#formEditarPedido button[type="submit"]');
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Guardando...';
+            btn.disabled = true;
+            
+            fetch('gestion_pedidos.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'actualizar',
+                    pedido_id: pedidoId,
+                    items: items
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Pedido actualizado correctamente');
+                    cerrarModalEditarPedido();
+                    location.reload(); // Recargar para ver los cambios
+                } else {
+                    alert('❌ Error: ' + data.message);
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Error al guardar los cambios');
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        }
+
+        // Funciones para editar y eliminar pedidos
+        function editarPedido(id) {
+            fetch(`gestion_pedidos.php?action=obtener&id=${id}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        mostrarModalEditarPedido(data);
+                    } else {
+                        alert('❌ Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('❌ Error al cargar el pedido');
+                });
+        }
+
+        function eliminarPedido(id) {
+            if (confirm('¿Está seguro de eliminar este pedido? Esta acción no se puede deshacer.')) {
+                fetch('gestion_pedidos.php', {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'eliminar', id: id }),
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ Pedido eliminado correctamente');
+                        document.getElementById(`pedido-${id}`).remove();
+                        
+                        // Si no hay más pedidos, mostrar mensaje
+                        if (document.querySelectorAll('.pedido-card').length === 0) {
+                            document.getElementById('lista-pedidos').innerHTML = `
+                                <div class="empty-state" style="grid-column: 1 / -1;">
+                                    <h3>🎉 No hay pedidos pendientes</h3>
+                                    <p>Todos los pedidos han sido pagados o no hay pedidos activos.</p>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        alert('❌ Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('❌ Error al eliminar el pedido');
+                });
+            }
         }
 
         // Cerrar modales al hacer clic fuera
@@ -1114,6 +1483,53 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
                     btn.disabled = false;
                 });
             }
+        }
+
+        // Funciones para el historial
+        function limpiarFiltros() {
+            const today = new Date();
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            document.getElementById('fecha_inicio').value = firstDay.toISOString().split('T')[0];
+            document.getElementById('fecha_fin').value = today.toISOString().split('T')[0];
+            document.getElementById('filtro_mesa').value = '';
+            document.getElementById('filtro_garzon').value = '';
+            filtrarHistorial();
+        }
+
+        function filtrarHistorial() {
+            const fechaInicio = document.getElementById('fecha_inicio').value;
+            const fechaFin = document.getElementById('fecha_fin').value;
+            const mesaId = document.getElementById('filtro_mesa').value;
+            const garzonId = document.getElementById('filtro_garzon').value;
+            
+            const params = new URLSearchParams({
+                fecha_inicio: fechaInicio,
+                fecha_fin: fechaFin,
+                mesa_id: mesaId,
+                garzon_id: garzonId,
+                ajax: 'true'
+            });
+            
+            fetch(`historial_pedidos.php?${params}`)
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('resultados-historial').innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error al filtrar el historial');
+                });
+        }
+
+        function exportarHistorial() {
+            const fechaInicio = document.getElementById('fecha_inicio').value;
+            const fechaFin = document.getElementById('fecha_fin').value;
+            const mesaId = document.getElementById('filtro_mesa').value;
+            const garzonId = document.getElementById('filtro_garzon').value;
+            
+            const url = `exportar_historial.php?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}&mesa_id=${mesaId}&garzon_id=${garzonId}`;
+            window.open(url, '_blank');
         }
     </script>
 </body>

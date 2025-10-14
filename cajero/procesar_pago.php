@@ -38,31 +38,25 @@ if (!$pedido_id || !$metodo_pago_id) {
 try {
     $pdo->beginTransaction();
     
-    // Actualizar estado del pedido a "pagado"
-    $sql_pedido = "UPDATE pedidos SET estado = 'pagado', fecha_pago = NOW() WHERE id = ?";
-    $stmt_pedido = $pdo->prepare($sql_pedido);
-    $stmt_pedido->execute([$pedido_id]);
-    
-    // Registrar el pago
-    $sql_pago = "
-        INSERT INTO pagos (pedido_id, metodo_pago_id, monto_total, propina, monto_recibido, cambio, fecha_pago) 
-        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    // Actualizar el pedido con toda la información del pago
+    $sql_pedido = "
+        UPDATE pedidos 
+        SET 
+            estado = 'pagado', 
+            fecha_pago = NOW(),
+            metodo_pago_id = ?,
+            propina = ?,
+            monto_recibido = ?,
+            cambio = ?
+        WHERE id = ?
     ";
-    $stmt_pago = $pdo->prepare($sql_pago);
-    
-    // Obtener el total del pedido
-    $sql_total = "SELECT total FROM pedidos WHERE id = ?";
-    $stmt_total = $pdo->prepare($sql_total);
-    $stmt_total->execute([$pedido_id]);
-    $pedido = $stmt_total->fetch(PDO::FETCH_ASSOC);
-    
-    $stmt_pago->execute([
-        $pedido_id,
+    $stmt_pedido = $pdo->prepare($sql_pedido);
+    $stmt_pedido->execute([
         $metodo_pago_id,
-        $pedido['total'],
         $propina,
         $monto_recibido,
-        $cambio
+        $cambio,
+        $pedido_id
     ]);
     
     // Liberar la mesa
