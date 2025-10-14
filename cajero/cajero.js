@@ -1,243 +1,218 @@
+// URL base para las acciones
+const ACTIONS_URL = 'cajero_actions.php';
+
 // Gestión de Mesas
 function editarMesa(id) {
-    fetch(`get_mesa.php?id=${id}`)
+    fetch(`${ACTIONS_URL}?action=get_mesa&id=${id}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                document.getElementById('modalMesa').classList.add('active');
-                document.getElementById('tituloModalMesa').textContent = 'Editar Mesa';
                 document.getElementById('mesa_id').value = data.mesa.id;
                 document.getElementById('numero_mesa').value = data.mesa.numero;
                 document.getElementById('estado_mesa').value = data.mesa.estado;
+                document.getElementById('tituloModalMesa').textContent = 'Editar Mesa';
+                document.getElementById('modalMesa').style.display = 'block';
             } else {
-                alert('Error al cargar la mesa');
+                alert(data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al cargar la mesa');
+            alert('Error al cargar los datos de la mesa');
         });
 }
 
 function eliminarMesa(id, event) {
-    event.stopPropagation();
+    if (event) event.stopPropagation();
     
-    if (confirm('¿Está seguro de eliminar esta mesa? Esta acción no se puede deshacer.')) {
-        fetch(`delete_mesa.php?id=${id}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error al eliminar la mesa: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error al eliminar la mesa');
-            });
+    if (!confirm('¿Estás seguro de que deseas eliminar esta mesa?')) {
+        return;
     }
+    
+    fetch(ACTIONS_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=delete_mesa&id=${id}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al eliminar la mesa');
+    });
 }
 
 // Gestión de Productos
 function editarProducto(id) {
-    fetch(`get_producto.php?id=${id}`)
+    fetch(`${ACTIONS_URL}?action=get_producto&id=${id}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                document.getElementById('modalProducto').classList.add('active');
+                const producto = data.producto;
+                document.getElementById('producto_id').value = producto.id;
+                document.getElementById('nombre_producto').value = producto.nombre;
+                document.getElementById('precio_producto').value = producto.precio;
+                document.getElementById('categoria_producto').value = producto.categoria;
+                document.getElementById('activo_producto').checked = producto.activo == 1;
                 document.getElementById('tituloModalProducto').textContent = 'Editar Producto';
-                document.getElementById('producto_id').value = data.producto.id;
-                document.getElementById('nombre_producto').value = data.producto.nombre;
-                document.getElementById('precio_producto').value = data.producto.precio;
-                document.getElementById('categoria_producto').value = data.producto.categoria;
-                document.getElementById('activo_producto').checked = data.producto.activo == 1;
+                document.getElementById('modalProducto').style.display = 'block';
             } else {
-                alert('Error al cargar el producto');
+                alert(data.message);
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al cargar el producto');
+            alert('Error al cargar los datos del producto');
         });
 }
 
 function eliminarProducto(id) {
-    if (confirm('¿Está seguro de eliminar este producto? Esta acción no se puede deshacer.')) {
-        fetch(`delete_producto.php?id=${id}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Error al eliminar el producto: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error al eliminar el producto');
-            });
+    if (!confirm('¿Estás seguro de que deseas eliminar este producto?')) {
+        return;
     }
-}
-
-// Formulario de Mesas
-document.getElementById('formMesa').addEventListener('submit', function(e) {
-    e.preventDefault();
     
-    const formData = new FormData(this);
-    const mesaId = document.getElementById('mesa_id').value;
-    const url = mesaId ? 'update_mesa.php' : 'create_mesa.php';
-    
-    fetch(url, {
+    fetch(ACTIONS_URL, {
         method: 'POST',
-        body: formData
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=delete_producto&id=${id}`
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            cerrarModalMesa();
+            alert(data.message);
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            alert(data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error al guardar la mesa');
+        alert('Error al eliminar el producto');
     });
-});
+}
 
-// Formulario de Productos
-document.getElementById('formProducto').addEventListener('submit', function(e) {
-    e.preventDefault();
+// Gestión de Pagos
+function mostrarDetallesPago(pedidoId) {
+    // Cargar detalles del pedido
+    fetch(`${ACTIONS_URL}?action=get_pedido_detalles&id=${pedidoId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('pedido_id_pago').value = pedidoId;
+                document.getElementById('total_pedido').value = data.pedido.total;
+                document.getElementById('tituloModalPago').textContent = `💳 Pago - Mesa ${data.pedido.mesa_numero}`;
+                
+                // Mostrar detalles del pedido
+                const detallesDiv = document.getElementById('detalles-pedido');
+                detallesDiv.innerHTML = `
+                    <h4>Detalles del Pedido</h4>
+                    <p><strong>Mesa:</strong> ${data.pedido.mesa_numero}</p>
+                    <p><strong>Garzón:</strong> ${data.pedido.garzon_nombre}</p>
+                    <p><strong>Total:</strong> Bs/ ${parseFloat(data.pedido.total).toFixed(2)}</p>
+                    <div class="items-list">
+                        ${Object.entries(data.pedido.items).map(([categoria, items]) => `
+                            <div class="item-categoria">
+                                <strong>${categoria}:</strong>
+                                ${items.map(item => `
+                                    <div style="margin-left: 1rem;">
+                                        ${item.cantidad}x ${item.producto_nombre} - Bs/ ${(item.precio_unitario * item.cantidad).toFixed(2)}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                document.getElementById('modalPago').style.display = 'block';
+                calcularCambio();
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al cargar los detalles del pedido');
+        });
+}
+
+function toggleEfectivoSection() {
+    const metodoSelect = document.getElementById('metodo_pago');
+    const selectedOption = metodoSelect.options[metodoSelect.selectedIndex];
+    const esEfectivo = selectedOption.getAttribute('data-tipo') === 'efectivo';
+    const seccionEfectivo = document.getElementById('seccion-efectivo');
     
-    const formData = new FormData(this);
-    const productoId = document.getElementById('producto_id').value;
-    const url = productoId ? 'update_producto.php' : 'create_producto.php';
-    
-    fetch(url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            cerrarModalProducto();
-            location.reload();
-        } else {
-            alert('Error: ' + data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error al guardar el producto');
-    });
-});
-
-// Navegación entre tabs
-function mostrarTab(tabName) {
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.getElementById(tabName).classList.add('active');
-    event.target.classList.add('active');
-}
-
-// Modal functions
-function mostrarModalMesa() {
-    document.getElementById('modalMesa').classList.add('active');
-    document.getElementById('tituloModalMesa').textContent = 'Nueva Mesa';
-    document.getElementById('formMesa').reset();
-    document.getElementById('mesa_id').value = '';
-}
-
-function cerrarModalMesa() {
-    document.getElementById('modalMesa').classList.remove('active');
-}
-
-function mostrarModalProducto() {
-    document.getElementById('modalProducto').classList.add('active');
-    document.getElementById('tituloModalProducto').textContent = 'Nuevo Producto';
-    document.getElementById('formProducto').reset();
-    document.getElementById('producto_id').value = '';
-    document.getElementById('activo_producto').checked = true;
-}
-
-function cerrarModalProducto() {
-    document.getElementById('modalProducto').classList.remove('active');
-}
-
-function mostrarModalPago() {
-    document.getElementById('modalPago').classList.add('active');
-}
-
-function cerrarModalPago() {
-    document.getElementById('modalPago').classList.remove('active');
-    // Resetear el botón de pago
-    const btn = document.getElementById('btnProcesarPago');
-    btn.disabled = false;
-    btn.textContent = '✅ Procesar Pago';
-}
-
-// Cerrar modales al hacer clic fuera
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('modal')) {
-        e.target.classList.remove('active');
-        // Resetear el botón de pago si se cierra el modal de pago
-        if (e.target.id === 'modalPago') {
-            const btn = document.getElementById('btnProcesarPago');
-            btn.disabled = false;
-            btn.textContent = '✅ Procesar Pago';
-        }
+    if (esEfectivo) {
+        seccionEfectivo.classList.remove('hidden');
+        document.getElementById('monto_recibido').required = true;
+    } else {
+        seccionEfectivo.classList.add('hidden');
+        document.getElementById('monto_recibido').required = false;
+        document.getElementById('cambio').textContent = 'Bs/ 0.00';
     }
-});
+}
 
-// BÚSQUEDA DE PEDIDOS (en tiempo real)
+function calcularCambio() {
+    const total = parseFloat(document.getElementById('total_pedido').value) || 0;
+    const propina = parseFloat(document.getElementById('propina').value) || 0;
+    const montoRecibido = parseFloat(document.getElementById('monto_recibido').value) || 0;
+    
+    const totalConPropina = total + propina;
+    const cambio = montoRecibido - totalConPropina;
+    
+    document.getElementById('cambio').textContent = `Bs/ ${cambio >= 0 ? cambio.toFixed(2) : '0.00'}`;
+    
+    // Validar que el monto recibido sea suficiente
+    const btnProcesar = document.getElementById('btnProcesarPago');
+    const metodoSelect = document.getElementById('metodo_pago');
+    const selectedOption = metodoSelect.options[metodoSelect.selectedIndex];
+    const esEfectivo = selectedOption.getAttribute('data-tipo') === 'efectivo';
+    
+    if (esEfectivo && cambio < 0) {
+        btnProcesar.disabled = true;
+        btnProcesar.title = 'El monto recibido es insuficiente';
+    } else {
+        btnProcesar.disabled = false;
+        btnProcesar.title = '';
+    }
+}
+
+// Funciones de búsqueda y filtrado
 function buscarPedidos() {
     const searchTerm = document.getElementById('searchPedidos').value.toLowerCase();
     const pedidos = document.querySelectorAll('.pedido-card');
-    let resultadosEncontrados = false;
-
+    
     pedidos.forEach(pedido => {
         const mesa = pedido.getAttribute('data-mesa').toLowerCase();
         const garzon = pedido.getAttribute('data-garzon').toLowerCase();
-        const total = pedido.getAttribute('data-total').toLowerCase();
-
+        const total = pedido.getAttribute('data-total');
+        
         if (mesa.includes(searchTerm) || garzon.includes(searchTerm) || total.includes(searchTerm)) {
             pedido.style.display = 'block';
-            resultadosEncontrados = true;
         } else {
             pedido.style.display = 'none';
         }
     });
-
-    if (!resultadosEncontrados && searchTerm !== '') {
-        document.getElementById('lista-pedidos').innerHTML = `
-            <div class="empty-state" style="grid-column: 1 / -1;">
-                <h3>🔍 No se encontraron resultados</h3>
-                <p>No hay pedidos que coincidan con "${searchTerm}"</p>
-            </div>
-        `;
-    }
 }
 
-function limpiarBusquedaPedidos() {
-    document.getElementById('searchPedidos').value = '';
-    location.reload();
-}
-
-// BÚSQUEDA DE MESAS (en tiempo real)
 function buscarMesas() {
     const searchTerm = document.getElementById('searchMesas').value.toLowerCase();
     const mesas = document.querySelectorAll('.mesa-card');
-
+    
     mesas.forEach(mesa => {
         const numero = mesa.getAttribute('data-numero').toLowerCase();
         const estado = mesa.getAttribute('data-estado').toLowerCase();
-
+        
         if (numero.includes(searchTerm) || estado.includes(searchTerm)) {
             mesa.style.display = 'block';
         } else {
@@ -246,213 +221,195 @@ function buscarMesas() {
     });
 }
 
-// BÚSQUEDA DE MENÚ (en tiempo real)
 function buscarMenu() {
     const searchTerm = document.getElementById('searchMenu').value.toLowerCase();
     const productos = document.querySelectorAll('.producto-card');
-    let resultadosEncontrados = false;
-
+    
     productos.forEach(producto => {
         const nombre = producto.getAttribute('data-nombre');
         const precio = producto.getAttribute('data-precio');
-        const categoria = producto.getAttribute('data-categoria');
-
-        if (nombre.includes(searchTerm) || precio.includes(searchTerm) || categoria.includes(searchTerm)) {
+        
+        if (nombre.includes(searchTerm) || precio.includes(searchTerm)) {
             producto.style.display = 'block';
-            producto.closest('.categoria-section').style.display = 'block';
-            resultadosEncontrados = true;
         } else {
             producto.style.display = 'none';
         }
     });
+}
 
-    if (!resultadosEncontrados && searchTerm !== '') {
-        document.getElementById('lista-productos').innerHTML = `
-            <div class="empty-state">
-                <h3>🔍 No se encontraron resultados</h3>
-                <p>No hay productos que coincidan con "${searchTerm}"</p>
-            </div>
-        `;
-    }
+function filtrarPorCategoria(categoria) {
+    const secciones = document.querySelectorAll('.categoria-section');
+    const filtros = document.querySelectorAll('.categoria-filter');
+    
+    // Actualizar filtros activos
+    filtros.forEach(filtro => filtro.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    secciones.forEach(seccion => {
+        if (categoria === 'todas' || seccion.getAttribute('data-categoria') === categoria) {
+            seccion.style.display = 'block';
+        } else {
+            seccion.style.display = 'none';
+        }
+    });
+}
+
+// Funciones de limpieza de búsqueda
+function limpiarBusquedaPedidos() {
+    document.getElementById('searchPedidos').value = '';
+    buscarPedidos();
 }
 
 function limpiarBusquedaMenu() {
     document.getElementById('searchMenu').value = '';
-    location.reload();
+    buscarMenu();
 }
 
-// FILTRADO POR CATEGORÍA
-function filtrarPorCategoria(categoria) {
-    document.querySelectorAll('.categoria-filter').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-
-    const categorias = document.querySelectorAll('.categoria-section');
-    
-    if (categoria === 'todas') {
-        categorias.forEach(cat => {
-            cat.style.display = 'block';
-        });
-    } else {
-        categorias.forEach(cat => {
-            if (cat.getAttribute('data-categoria') === categoria) {
-                cat.style.display = 'block';
-            } else {
-                cat.style.display = 'none';
-            }
-        });
-    }
+// Funciones de modales
+function mostrarModalMesa() {
+    document.getElementById('formMesa').reset();
+    document.getElementById('mesa_id').value = '';
+    document.getElementById('tituloModalMesa').textContent = 'Nueva Mesa';
+    document.getElementById('modalMesa').style.display = 'block';
 }
 
-// FUNCIONALIDAD DE PAGO
-function mostrarDetallesPago(pedidoId) {
-    const pedidoCard = document.getElementById(`pedido-${pedidoId}`);
-    const mesa = pedidoCard.getAttribute('data-mesa');
-    const garzon = pedidoCard.getAttribute('data-garzon');
-    const total = pedidoCard.getAttribute('data-total');
-    
-    // Obtener los items del pedido
-    const items = pedidoCard.querySelector('.items-list').innerHTML;
-    
-    document.getElementById('tituloModalPago').textContent = `💳 Pago - Mesa ${mesa}`;
-    document.getElementById('detalles-pedido').innerHTML = `
-        <h4>🍽️ Mesa ${mesa} - Pedido #${pedidoId}</h4>
-        <p><strong>Garzón:</strong> ${garzon}</p>
-        ${items}
-        <div class="pedido-total">
-            💰 Total: Bs/ ${total}
-        </div>
-    `;
-    
-    document.getElementById('pedido_id_pago').value = pedidoId;
-    document.getElementById('total_pedido').value = total;
-    document.getElementById('formPago').reset();
-    document.getElementById('seccion-efectivo').classList.add('hidden');
-    document.getElementById('cambio').textContent = 'Bs/ 0.00';
-    document.getElementById('cambio').className = 'cambio-info';
-    
-    mostrarModalPago();
+function cerrarModalMesa() {
+    document.getElementById('modalMesa').style.display = 'none';
 }
 
-function toggleEfectivoSection() {
-    const select = document.getElementById('metodo_pago');
-    const efectivoSection = document.getElementById('seccion-efectivo');
-    const metodoSeleccionado = select.options[select.selectedIndex];
-    const tipoPago = metodoSeleccionado.getAttribute('data-tipo');
-
-    if (tipoPago === 'efectivo') {
-        efectivoSection.classList.remove('hidden');
-        document.getElementById('monto_recibido').required = true;
-    } else {
-        efectivoSection.classList.add('hidden');
-        document.getElementById('monto_recibido').required = false;
-    }
-    
-    calcularCambio();
+function mostrarModalProducto() {
+    document.getElementById('formProducto').reset();
+    document.getElementById('producto_id').value = '';
+    document.getElementById('tituloModalProducto').textContent = 'Nuevo Producto';
+    document.getElementById('modalProducto').style.display = 'block';
 }
 
-function calcularCambio() {
-    const total = parseFloat(document.getElementById('total_pedido').value);
-    const propina = parseFloat(document.getElementById('propina').value) || 0;
-    const montoRecibido = parseFloat(document.getElementById('monto_recibido')?.value) || 0;
-    const totalConPropina = total + propina;
-    const cambio = montoRecibido - totalConPropina;
-    
-    const cambioElement = document.getElementById('cambio');
-    if (cambioElement) {
-        if (cambio >= 0) {
-            cambioElement.textContent = `Bs/ ${cambio.toFixed(2)}`;
-            cambioElement.className = 'cambio-info';
-        } else {
-            cambioElement.textContent = `Faltan: Bs/ ${Math.abs(cambio).toFixed(2)}`;
-            cambioElement.className = 'cambio-info cambio-negativo';
-        }
-    }
+function cerrarModalProducto() {
+    document.getElementById('modalProducto').style.display = 'none';
 }
 
-// Procesar pago
-document.getElementById('formPago').addEventListener('submit', function(e) {
-    e.preventDefault();
-    procesarPago();
-});
+function cerrarModalPago() {
+    document.getElementById('modalPago').style.display = 'none';
+}
 
-function procesarPago() {
-    const pedidoId = document.getElementById('pedido_id_pago').value;
-    const total = parseFloat(document.getElementById('total_pedido').value);
-    const metodoPago = document.getElementById('metodo_pago').value;
-    const propina = parseFloat(document.getElementById('propina').value) || 0;
-    const montoRecibido = parseFloat(document.getElementById('monto_recibido').value) || 0;
-    const totalConPropina = total + propina;
-    const cambio = montoRecibido - totalConPropina;
-    
-    // Validaciones
-    if (!metodoPago) {
-        alert('❌ Por favor seleccione un método de pago');
-        return;
-    }
-    
-    const metodoSeleccionado = document.getElementById('metodo_pago').options[document.getElementById('metodo_pago').selectedIndex];
-    const tipoPago = metodoSeleccionado.getAttribute('data-tipo');
-    
-    if (tipoPago === 'efectivo') {
-        if (montoRecibido <= 0) {
-            alert('❌ Por favor ingrese el monto recibido del cliente');
-            return;
-        }
-        if (montoRecibido < totalConPropina) {
-            alert('❌ El monto recibido es menor al total + propina. Faltan: Bs/ ' + Math.abs(cambio).toFixed(2));
-            return;
-        }
-    }
-    
-    if (confirm(`¿Está seguro de procesar el pago del Pedido #${pedidoId}?\n\nTotal: Bs/ ${total}\nPropina: Bs/ ${propina}\nTotal a Pagar: Bs/ ${totalConPropina}\nMétodo: ${metodoSeleccionado.textContent}`)) {
-        const btn = document.getElementById('btnProcesarPago');
-        const originalText = btn.textContent;
-        btn.textContent = '⏳ Procesando...';
-        btn.disabled = true;
+// Event Listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Formulario de Mesa
+    document.getElementById('formMesa').addEventListener('submit', function(e) {
+        e.preventDefault();
         
-        // Agregar timeout para evitar congelamiento
-        const timeoutId = setTimeout(() => {
-            btn.textContent = originalText;
-            btn.disabled = false;
-            alert('❌ El proceso está tomando más tiempo de lo esperado. Por favor intente nuevamente.');
-        }, 10000); // 10 segundos timeout
+        const formData = new FormData(this);
+        formData.append('action', document.getElementById('mesa_id').value ? 'update_mesa' : 'create_mesa');
         
-        fetch('procesar_pago.php', {
+        fetch(ACTIONS_URL, {
             method: 'POST',
-            body: JSON.stringify({
-                pedido_id: pedidoId,
-                metodo_pago_id: metodoPago,
-                propina: propina,
-                monto_recibido: montoRecibido,
-                cambio: cambio >= 0 ? cambio : 0
-            }),
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            body: formData
         })
-        .then(response => {
-            clearTimeout(timeoutId);
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Pago procesado exitosamente');
-                cerrarModalPago();
+                alert(data.message);
+                cerrarModalMesa();
                 location.reload();
             } else {
-                alert('❌ Error al procesar el pago: ' + data.message);
-                btn.textContent = originalText;
-                btn.disabled = false;
+                alert(data.message);
             }
         })
         .catch(error => {
-            clearTimeout(timeoutId);
             console.error('Error:', error);
-            alert('❌ Error de conexión al procesar el pago');
-            btn.textContent = originalText;
-            btn.disabled = false;
+            alert('Error al guardar la mesa');
         });
-    }
+    });
+    
+    // Formulario de Producto
+    document.getElementById('formProducto').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        formData.append('action', document.getElementById('producto_id').value ? 'update_producto' : 'create_producto');
+        
+        fetch(ACTIONS_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                cerrarModalProducto();
+                location.reload();
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al guardar el producto');
+        });
+    });
+    
+    // Formulario de Pago
+    document.getElementById('formPago').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            pedido_id: document.getElementById('pedido_id_pago').value,
+            metodo_pago_id: document.getElementById('metodo_pago').value,
+            propina: parseFloat(document.getElementById('propina').value) || 0,
+            monto_recibido: parseFloat(document.getElementById('monto_recibido').value) || 0,
+            cambio: parseFloat(document.getElementById('cambio').textContent.replace('Bs/ ', '')) || 0
+        };
+        
+        fetch(ACTIONS_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                action: 'procesar_pago',
+                ...formData
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`✅ ${data.message}\nMesa ${data.data.mesa_liberada} liberada`);
+                cerrarModalPago();
+                location.reload();
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al procesar el pago');
+        });
+    });
+    
+    // Cerrar modales al hacer clic fuera
+    window.onclick = function(event) {
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    };
+});
+
+// Funciones de navegación entre tabs
+function mostrarTab(tabName) {
+    // Ocultar todos los tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Mostrar el tab seleccionado
+    document.getElementById(tabName).classList.add('active');
+    
+    // Actualizar botones de navegación
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    event.target.classList.add('active');
 }
