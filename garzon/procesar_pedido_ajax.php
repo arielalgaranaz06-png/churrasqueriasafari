@@ -1,4 +1,5 @@
 <?php
+session_start();
 include '../config/database.php';
 
 // Verificar si es una solicitud POST
@@ -20,6 +21,7 @@ try {
     $mesa_id = $_POST['mesa_id'];
     $usuario_id = $_POST['usuario_id'];
     $items = json_decode($_POST['items'], true);
+    $total = $_POST['total'];
 
     // Validar datos
     if (empty($mesa_id) || empty($usuario_id) || empty($items)) {
@@ -30,50 +32,34 @@ try {
     $pdo->beginTransaction();
 
     // 1. Crear el pedido
-    $sql_pedido = "INSERT INTO pedidos (mesa_id, usuario_id, estado, total) VALUES (?, ?, 'listo', 0)";
+    $sql_pedido = "INSERT INTO pedidos (mesa_id, usuario_id, total, estado) VALUES (?, ?, ?, 'pendiente')";
     $stmt_pedido = $pdo->prepare($sql_pedido);
-    $stmt_pedido->execute([$mesa_id, $usuario_id]);
+    $stmt_pedido->execute([$mesa_id, $usuario_id, $total]);
     $pedido_id = $pdo->lastInsertId();
 
-    // 2. Insertar items del pedido y calcular total
-    $total_pedido = 0;
+    // 2. Insertar items del pedido
     $sql_item = "INSERT INTO pedido_items (pedido_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)";
     $stmt_item = $pdo->prepare($sql_item);
 
-    foreach ($items as $item) {
-        $subtotal = $item['precio'] * $item['cantidad'];
-        $total_pedido += $subtotal;
-        
-        $stmt_item->execute([
-            $pedido_id,
-            $item['producto_id'],
-            $item['cantidad'],
-            $item['precio']
-        ]);
+    foreach ($items as $producto_id => $item) {
+        $stmt_item->execute([$pedido_id, $producto_id, $item['cantidad'], $item['precio']]);
     }
 
-    // 3. Actualizar total del pedido
-    $sql_update_total = "UPDATE pedidos SET total = ? WHERE id = ?";
-    $stmt_update = $pdo->prepare($sql_update_total);
-    $stmt_update->execute([$total_pedido, $pedido_id]);
-
-    // 4. Actualizar estado de la mesa a "ocupada"
-    $sql_update_mesa = "UPDATE mesas SET estado = 'ocupada' WHERE id = ?";
-    $stmt_mesa = $pdo->prepare($sql_update_mesa);
+    // 3. Actualizar estado de la mesa
+    $sql_mesa = "UPDATE mesas SET estado = 'ocupada' WHERE id = ?";
+    $stmt_mesa = $pdo->prepare($sql_mesa);
     $stmt_mesa->execute([$mesa_id]);
 
-    // Confirmar transacción
     $pdo->commit();
-
+    
     echo json_encode([
         'success' => true,
         'message' => 'Pedido creado exitosamente',
         'pedido_id' => $pedido_id,
-        'total' => $total_pedido
+        'total' => $total
     ]);
 
 } catch (Exception $e) {
-    // Revertir transacción en caso de error
     $pdo->rollBack();
     
     echo json_encode([

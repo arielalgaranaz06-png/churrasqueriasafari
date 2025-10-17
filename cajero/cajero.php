@@ -467,6 +467,7 @@ $garzones = $pdo->query($sql_garzones)->fetchAll(PDO::FETCH_ASSOC);
         <button class="nav-tab" onclick="mostrarTab('historial')">📊 Historial de Pagos</button>        
         <button class="nav-tab" onclick="mostrarTab('mesas')">🍽️ Gestión de Mesas</button>
         <button class="nav-tab" onclick="mostrarTab('menu')">📖 Gestión de Menú</button>
+        <button class="nav-tab" onclick="mostrarTab('caja')">💰 Gestión de Caja</button>
     </div>
 
     <div class="container">
@@ -765,6 +766,93 @@ $garzones = $pdo->query($sql_garzones)->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             </div>
         </div>
+
+        <!-- Tab: Gestión de Caja -->
+        <div id="caja" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>💰 Gestión de Caja</h2>
+                </div>
+                <div class="card-body">
+                    <!-- Estado Actual de Caja -->
+                    <div class="estado-caja" style="margin-bottom: 2rem;">
+                        <h3>📊 Estado Actual de Caja</h3>
+                        <div id="info-caja-actual" class="pago-section">
+                            <div class="empty-state">
+                                <p>Cargando estado de caja...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-2">
+                        <!-- Apertura de Caja -->
+                        <div class="apertura-caja">
+                            <h3>🔓 Apertura de Caja</h3>
+                            <form id="form-apertura-caja">
+                                <div class="form-group">
+                                    <label>Monto Inicial (Bs/):</label>
+                                    <input type="number" step="0.01" id="monto-inicial" class="form-control" required min="0" placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Turno:</label>
+                                    <select id="turno-apertura" class="form-control" required>
+                                        <option value="">Seleccionar turno</option>
+                                        <option value="mañana">Mañana (12:00 - 15:00)</option>
+                                        <option value="tarde">Tarde (18:00 - 23:00)</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-success">Abrir Caja</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Cierre de Caja -->
+                        <div class="cierre-caja">
+                            <h3>🔒 Cierre de Caja</h3>
+                            <div id="resumen-cierre" class="pago-section" style="min-height: 100px;">
+                                <p>La caja debe estar abierta para poder cerrarla</p>
+                            </div>
+                            <form id="form-cierre-caja">
+                                <div class="form-group">
+                                    <label>Monto Final en Caja (Bs/):</label>
+                                    <input type="number" step="0.01" id="monto-final" class="form-control" required min="0" placeholder="0.00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Observaciones:</label>
+                                    <textarea id="observaciones-cierre" class="form-control" rows="3" placeholder="Observaciones del cierre..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-warning" id="btn-cierre-caja" disabled>Cerrar Caja</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Reportes por Turno -->
+                    <div class="reportes-turno" style="margin-top: 2rem;">
+                        <h3>📈 Reportes por Turno</h3>
+                        <form id="form-reporte" class="grid grid-3">
+                            <div class="form-group">
+                                <label>Fecha:</label>
+                                <input type="date" id="fecha-reporte" class="form-control" value="<?php echo date('Y-m-d'); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Turno:</label>
+                                <select id="turno-reporte" class="form-control">
+                                    <option value="todos">Todos los Turnos</option>
+                                    <option value="mañana">Mañana</option>
+                                    <option value="tarde">Tarde</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button type="submit" class="btn btn-primary">Generar Reporte</button>
+                            </div>
+                        </form>
+                        
+                        <div id="resultado-reporte" style="margin-top: 1rem;">
+                            <!-- Resultados del reporte -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Modal para Mesas -->
@@ -921,6 +1009,315 @@ $garzones = $pdo->query($sql_garzones)->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="cajero.js"></script>
     <script>
+        // Gestión de Caja
+        class GestionCaja {
+            constructor() {
+                this.cajaActual = null;
+                this.init();
+            }
+
+            async init() {
+                await this.verificarEstadoCaja();
+                this.setupEventListeners();
+            }
+
+            async verificarEstadoCaja() {
+                try {
+                    const response = await fetch('gestion_caja.php?action=estado-actual');
+                    const data = await response.json();
+                    
+                    if (data.success && data.cajaAbierta) {
+                        this.cajaActual = data.caja;
+                        this.mostrarEstadoCajaAbierta(data);
+                    } else {
+                        this.mostrarEstadoCajaCerrada();
+                    }
+                } catch (error) {
+                    console.error('Error al verificar estado de caja:', error);
+                }
+            }
+
+            mostrarEstadoCajaAbierta(data) {
+                const infoCaja = document.getElementById('info-caja-actual');
+                infoCaja.innerHTML = `
+                    <div class="caja-abierta">
+                        <div class="grid grid-3">
+                            <div>
+                                <p><strong>🟢 Caja Abierta</strong></p>
+                                <p><strong>Turno:</strong> ${this.cajaActual.turno === 'mañana' ? '🌅 Mañana' : '🌙 Tarde'}</p>
+                                <p><strong>Fecha:</strong> ${new Date(this.cajaActual.fecha_apertura).toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <p><strong>💰 Monto Inicial:</strong></p>
+                                <h3 class="text-success">Bs/ ${parseFloat(this.cajaActual.monto_inicial).toFixed(2)}</h3>
+                                <p><strong>💵 Efectivo en Caja:</strong> Bs/ ${parseFloat(data.resumen.efectivo_caja).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p><strong>📊 Ventas del Turno:</strong></p>
+                                <p>Efectivo: Bs/ ${parseFloat(data.resumen.ventas_efectivo).toFixed(2)}</p>
+                                <p>Otros: Bs/ ${parseFloat(data.resumen.ventas_otros).toFixed(2)}</p>
+                                <p><strong>Total:</strong> Bs/ ${parseFloat(data.resumen.total_ventas).toFixed(2)}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('btn-cierre-caja').disabled = false;
+                document.getElementById('form-apertura-caja').style.display = 'none';
+                this.prepararCierreCaja();
+            }
+
+            mostrarEstadoCajaCerrada() {
+                const infoCaja = document.getElementById('info-caja-actual');
+                infoCaja.innerHTML = `
+                    <div class="caja-cerrada">
+                        <div style="text-align: center; padding: 1rem;">
+                            <h3 style="color: #dc3545;">🔒 Caja Cerrada</h3>
+                            <p>Para comenzar, abre la caja con el monto inicial del turno.</p>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('form-apertura-caja').style.display = 'block';
+                document.getElementById('btn-cierre-caja').disabled = true;
+                document.getElementById('resumen-cierre').innerHTML = '<p>La caja debe estar abierta para poder cerrarla</p>';
+            }
+
+            setupEventListeners() {
+                // Apertura de caja
+                document.getElementById('form-apertura-caja').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.abrirCaja();
+                });
+
+                // Cierre de caja
+                document.getElementById('form-cierre-caja').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.cerrarCaja();
+                });
+
+                // Generar reportes
+                document.getElementById('form-reporte').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.generarReporte();
+                });
+            }
+
+            async abrirCaja() {
+                const montoInicial = document.getElementById('monto-inicial').value;
+                const turno = document.getElementById('turno-apertura').value;
+
+                if (!montoInicial || !turno) {
+                    alert('❌ Por favor complete todos los campos');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('gestion_caja.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            action: 'apertura',
+                            monto_inicial: parseFloat(montoInicial),
+                            turno: turno
+                        })
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('✅ Caja abierta correctamente');
+                        this.verificarEstadoCaja();
+                    } else {
+                        alert('❌ Error al abrir caja: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('❌ Error al abrir caja');
+                }
+            }
+
+            async prepararCierreCaja() {
+                try {
+                    const response = await fetch('gestion_caja.php?action=preparar-cierre');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.mostrarResumenCierre(data);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            }
+
+            mostrarResumenCierre(data) {
+                const resumenCierre = document.getElementById('resumen-cierre');
+                const diferencia = data.resumen.efectivo_esperado - data.resumen.ventas_efectivo - data.caja.monto_inicial;
+                
+                let diferenciaHtml = '';
+                if (Math.abs(diferencia) > 0.01) {
+                    const claseDiferencia = diferencia > 0 ? 'text-success' : 'text-danger';
+                    diferenciaHtml = `<p class="${claseDiferencia}"><strong>Diferencia:</strong> Bs/ ${Math.abs(diferencia).toFixed(2)}</p>`;
+                }
+
+                resumenCierre.innerHTML = `
+                    <h4>Resumen para Cierre</h4>
+                    <div class="grid grid-2">
+                        <div>
+                            <p><strong>Monto Inicial:</strong> Bs/ ${parseFloat(data.caja.monto_inicial).toFixed(2)}</p>
+                            <p><strong>Ventas en Efectivo:</strong> Bs/ ${parseFloat(data.resumen.ventas_efectivo).toFixed(2)}</p>
+                            <p><strong>Efectivo Esperado:</strong> Bs/ ${parseFloat(data.resumen.efectivo_esperado).toFixed(2)}</p>
+                            ${diferenciaHtml}
+                        </div>
+                        <div>
+                            <p><strong>Total Ventas:</strong> Bs/ ${parseFloat(data.resumen.total_ventas).toFixed(2)}</p>
+                            <p><strong>Ventas con Tarjeta/otros:</strong> Bs/ ${parseFloat(data.resumen.ventas_otros).toFixed(2)}</p>
+                            <p><strong>Propinas:</strong> Bs/ ${parseFloat(data.resumen.total_propinas).toFixed(2)}</p>
+                        </div>
+                    </div>
+                    ${this.generarDetalleMetodos(data.resumen.detalle_metodos)}
+                `;
+            }
+
+            generarDetalleMetodos(detalleMetodos) {
+                if (!detalleMetodos || detalleMetodos.length === 0) {
+                    return '';
+                }
+
+                let html = '<div style="margin-top: 1rem;"><strong>Detalle por Método de Pago:</strong><ul>';
+                detalleMetodos.forEach(metodo => {
+                    html += `<li>${metodo.metodo_pago}: ${metodo.cantidad_pedidos} pedidos - Bs/ ${parseFloat(metodo.total_ventas).toFixed(2)}</li>`;
+                });
+                html += '</ul></div>';
+
+                return html;
+            }
+
+            async cerrarCaja() {
+                const montoFinal = document.getElementById('monto-final').value;
+                const observaciones = document.getElementById('observaciones-cierre').value;
+
+                if (!montoFinal) {
+                    alert('❌ Por favor ingrese el monto final en caja');
+                    return;
+                }
+
+                if (confirm('¿Está seguro de cerrar la caja? Esta acción no se puede deshacer.')) {
+                    try {
+                        const response = await fetch('gestion_caja.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                action: 'cierre',
+                                monto_final: parseFloat(montoFinal),
+                                observaciones: observaciones
+                            })
+                        });
+
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            let mensaje = '✅ Caja cerrada correctamente';
+                            if (Math.abs(result.diferencia) > 0.01) {
+                                const tipo = result.diferencia > 0 ? 'sobrante' : 'faltante';
+                                mensaje += `\n\nHay un ${tipo} de: Bs/ ${Math.abs(result.diferencia).toFixed(2)}`;
+                            }
+                            alert(mensaje);
+                            this.verificarEstadoCaja();
+                            document.getElementById('form-cierre-caja').reset();
+                        } else {
+                            alert('❌ Error al cerrar caja: ' + result.message);
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('❌ Error al cerrar caja');
+                    }
+                }
+            }
+
+            async generarReporte() {
+                const fecha = document.getElementById('fecha-reporte').value;
+                const turno = document.getElementById('turno-reporte').value;
+
+                try {
+                    const response = await fetch(`gestion_caja.php?action=reporte-turno&fecha=${fecha}&turno=${turno}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.mostrarReporte(data);
+                    } else {
+                        alert('❌ Error al generar reporte: ' + data.message);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('❌ Error al generar reporte');
+                }
+            }
+
+            mostrarReporte(data) {
+                const resultado = document.getElementById('resultado-reporte');
+                
+                let tituloTurno = 'Todos los Turnos';
+                if (data.turno === 'mañana') tituloTurno = 'Turno Mañana';
+                if (data.turno === 'tarde') tituloTurno = 'Turno Tarde';
+
+                let html = `
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📈 Reporte - ${tituloTurno}</h3>
+                            <p><strong>Fecha:</strong> ${new Date(data.fecha + 'T00:00:00').toLocaleDateString()}</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="grid grid-3" style="margin-bottom: 1rem; text-align: center;">
+                                <div>
+                                    <h4>📦 Pedidos</h4>
+                                    <h2 class="text-info">${data.totales.cantidad_pedidos}</h2>
+                                </div>
+                                <div>
+                                    <h4>💰 Ventas Totales</h4>
+                                    <h2 class="text-success">Bs/ ${parseFloat(data.totales.total_ventas).toFixed(2)}</h2>
+                                </div>
+                                <div>
+                                    <h4>💎 Propinas</h4>
+                                    <h2 class="text-warning">Bs/ ${parseFloat(data.totales.total_propinas).toFixed(2)}</h2>
+                                </div>
+                            </div>
+                `;
+
+                if (data.pedidos.length > 0) {
+                    html += `<h4>📋 Detalle de Pedidos</h4>`;
+                    data.pedidos.forEach(pedido => {
+                        html += `
+                            <div class="pedido-card historial" style="margin-bottom: 1rem;">
+                                <div class="grid grid-2">
+                                    <div>
+                                        <p><strong>Mesa ${pedido.mesa_numero}</strong> - Pedido #${pedido.pedido_id}</p>
+                                        <p><strong>Garzón:</strong> ${pedido.garzon_nombre}</p>
+                                        <p><strong>Hora:</strong> ${new Date(pedido.fecha_pago).toLocaleTimeString()}</p>
+                                        <p><strong>Método:</strong> ${pedido.metodo_pago || 'No especificado'}</p>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <h3 class="text-success">Bs/ ${parseFloat(pedido.total).toFixed(2)}</h3>
+                                        ${pedido.propina > 0 ? `<p><strong>Propina:</strong> Bs/ ${parseFloat(pedido.propina).toFixed(2)}</p>` : ''}
+                                    </div>
+                                </div>
+                                <p><strong>Productos:</strong> ${pedido.productos}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += `<div class="empty-state"><p>No hay pedidos para esta fecha y turno</p></div>`;
+                }
+
+                html += `</div></div>`;
+                resultado.innerHTML = html;
+            }
+        }
+
         // Navegación entre tabs
         function mostrarTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(tab => {
@@ -931,6 +1328,15 @@ $garzones = $pdo->query($sql_garzones)->fetchAll(PDO::FETCH_ASSOC);
             });
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
+            
+            // Si es la pestaña de caja, inicializar el sistema
+            if (tabName === 'caja') {
+                if (!window.gestionCaja) {
+                    window.gestionCaja = new GestionCaja();
+                } else {
+                    window.gestionCaja.verificarEstadoCaja();
+                }
+            }
             
             // Si es la pestaña de historial, cargar los datos
             if (tabName === 'historial') {

@@ -19,82 +19,12 @@ $sql_mesas = "SELECT * FROM mesas WHERE estado = 'libre' ORDER BY numero";
 $stmt_mesas = $pdo->query($sql_mesas);
 $mesas = $stmt_mesas->fetchAll(PDO::FETCH_ASSOC);
 
-// Variable para controlar el reset
-$reset_pedido = false;
-
-// Procesar pedido si se envía
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
-    $mesa_id = $_POST['mesa_id'];
-    $usuario_id = $_SESSION['user_id'];
-    $items = json_decode($_POST['items'], true);
-    $total = $_POST['total'];
-
-    try {
-        $pdo->beginTransaction();
-
-        // 1. Crear el pedido
-        $sql_pedido = "INSERT INTO pedidos (mesa_id, usuario_id, total, estado) VALUES (?, ?, ?, 'pendiente')";
-        $stmt_pedido = $pdo->prepare($sql_pedido);
-        $stmt_pedido->execute([$mesa_id, $usuario_id, $total]);
-        $pedido_id = $pdo->lastInsertId();
-
-        // 2. Insertar items del pedido
-        $sql_item = "INSERT INTO pedido_items (pedido_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)";
-        $stmt_item = $pdo->prepare($sql_item);
-
-        foreach ($items as $producto_id => $item) {
-            $stmt_item->execute([$pedido_id, $producto_id, $item['cantidad'], $item['precio']]);
-        }
-
-        // 3. Actualizar estado de la mesa
-        $sql_mesa = "UPDATE mesas SET estado = 'ocupada' WHERE id = ?";
-        $stmt_mesa = $pdo->prepare($sql_mesa);
-        $stmt_mesa->execute([$mesa_id]);
-
-        $pdo->commit();
-        
-        $mensaje = "✅ Pedido registrado exitosamente. N° de pedido: " . $pedido_id;
-        $tipo_mensaje = "success";
-        
-        // Recargar mesas disponibles
-        $stmt_mesas = $pdo->query($sql_mesas);
-        $mesas = $stmt_mesas->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Preparar datos para impresión
-        $items_impresion = [];
-        foreach ($items as $producto_id => $item) {
-            // Obtener información completa del producto
-            $sql_producto = "SELECT nombre, categoria FROM productos WHERE id = ?";
-            $stmt_producto = $pdo->prepare($sql_producto);
-            $stmt_producto->execute([$producto_id]);
-            $producto_info = $stmt_producto->fetch(PDO::FETCH_ASSOC);
-            
-            $items_impresion[] = [
-                'producto_nombre' => $producto_info['nombre'],
-                'categoria' => $producto_info['categoria'],
-                'cantidad' => $item['cantidad'],
-                'precio' => $item['precio']
-            ];
-        }
-        
-        // Guardar datos de impresión en sesión para usar en JavaScript
-        $_SESSION['ultimo_pedido_impresion'] = [
-            'pedido_id' => $pedido_id,
-            'mesa_numero' => $_POST['mesa_numero'],
-            'items' => $items_impresion
-        ];
-        
-        // Marcar para resetear el pedido en el frontend
-        $reset_pedido = true;
-        
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $mensaje = "❌ Error al registrar el pedido: " . $e->getMessage();
-        $tipo_mensaje = "error";
-    }
+// Limpiar mensaje de sesión si existe
+if (isset($_SESSION['mensaje_pedido'])) {
+    unset($_SESSION['mensaje_pedido']);
+    unset($_SESSION['tipo_mensaje']);
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -102,7 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Garzón</title>
     <style>
-        /* (Mantener todos los estilos CSS anteriores igual) */
         * {
             margin: 0;
             padding: 0;
@@ -115,19 +44,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         .header {
             background: linear-gradient(135deg, #ffffffff, #79a8eeff 100%);
             color: white;
-            padding: 1rem 2rem;
+            padding: 1rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .header h1 {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
         }
         .user-info {
             display: flex;
             align-items: center;
             gap: 1rem;
+            flex-wrap: wrap;
         }
         .logout-btn {
             background-color: #dc3545;
@@ -136,26 +66,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             text-decoration: none;
             border-radius: 5px;
             transition: background-color 0.3s;
+            font-size: 0.9rem;
         }
         .logout-btn:hover {
             background-color: #c82333;
         }
         .container {
-            padding: 2rem;
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 2rem;
-            height: calc(100vh - 80px);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        @media (min-width: 768px) {
+            .container {
+                display: grid;
+                grid-template-columns: 1fr 2fr;
+                gap: 2rem;
+                height: calc(100vh - 80px);
+            }
+            .header h1 {
+                font-size: 1.5rem;
+            }
         }
         .left-panel {
             display: flex;
             flex-direction: column;
-            gap: 2rem;
+            gap: 1rem;
         }
         .right-panel {
             display: flex;
             flex-direction: column;
-            gap: 2rem;
+            gap: 1rem;
         }
         .card {
             background: white;
@@ -165,11 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         }
         .card-header {
             background: #f8f9fa;
-            padding: 1.25rem;
+            padding: 1rem;
             border-bottom: 2px solid #e9ecef;
         }
         .card-body {
-            padding: 1.25rem;
+            padding: 1rem;
         }
         .search-box {
             margin-bottom: 1rem;
@@ -239,9 +180,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             margin-bottom: 1rem;
             border-bottom: 2px solid #e9ecef;
             padding-bottom: 1rem;
+            overflow-x: auto;
         }
         .categoria-tab {
-            padding: 0.75rem 1.5rem;
+            padding: 0.75rem 1rem;
             background: #f8f9fa;
             border: 2px solid #e9ecef;
             border-radius: 8px;
@@ -251,6 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .categoria-tab.active {
             background: #007bff;
@@ -265,17 +209,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         }
         .productos-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 1rem;
             max-height: 400px;
             overflow-y: auto;
             padding: 0.5rem;
         }
+        @media (max-width: 480px) {
+            .productos-grid {
+                grid-template-columns: 1fr;
+            }
+        }
         .producto-card {
             background: #f8f9fa;
             border: 2px solid #e9ecef;
             border-radius: 12px;
-            padding: 1.25rem;
+            padding: 1rem;
             transition: all 0.3s ease;
             cursor: pointer;
         }
@@ -308,12 +257,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         .cantidad-controls {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
             margin-top: 0.75rem;
+            justify-content: center;
         }
         .btn-cantidad {
-            width: 32px;
-            height: 32px;
+            width: 44px;
+            height: 44px;
             border: 2px solid #007bff;
             background: white;
             color: #007bff;
@@ -323,6 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             justify-content: center;
             cursor: pointer;
             font-weight: bold;
+            font-size: 1.2rem;
             transition: all 0.3s;
         }
         .btn-cantidad:hover {
@@ -330,24 +281,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             color: white;
         }
         .cantidad-display {
-            font-size: 1rem;
+            font-size: 1.3rem;
             font-weight: bold;
-            min-width: 35px;
+            min-width: 45px;
             text-align: center;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
         }
         .mesas-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.75rem;
             max-height: 300px;
             overflow-y: auto;
             padding: 0.5rem;
+        }
+        @media (max-width: 480px) {
+            .mesas-grid {
+                grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            }
         }
         .mesa-card {
             background: white;
             border: 3px solid #28a745;
             border-radius: 12px;
-            padding: 1.25rem;
+            padding: 1rem;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
@@ -361,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             color: white;
         }
         .mesa-numero {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             font-weight: bold;
             margin-bottom: 0.5rem;
         }
@@ -369,7 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             background: #e7f3ff;
             border: 2px solid #007bff;
             border-radius: 12px;
-            padding: 1.5rem;
+            padding: 1rem;
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -378,6 +337,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             flex: 1;
             overflow-y: auto;
             margin-bottom: 1rem;
+            max-height: 300px;
         }
         .pedido-item {
             display: flex;
@@ -439,8 +399,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         }
         .pedido-actions {
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
             margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .pedido-actions .btn {
+            flex: 1;
+            min-width: 120px;
         }
     </style>
 </head>
@@ -453,11 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         </div>
     </div>
 
-    <?php if (isset($mensaje)): ?>
-        <div class="alert alert-<?php echo $tipo_mensaje === 'success' ? 'success' : 'error'; ?>">
-            <?php echo $mensaje; ?>
-        </div>
-    <?php endif; ?>
+    <div id="alert-container"></div>
 
     <div class="container">
         <!-- Panel Izquierdo: Mesas y Pedido Actual -->
@@ -581,15 +542,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
         </div>
     </div>
 
-    <!-- Formulario oculto para enviar pedido -->
-    <form id="formPedido" method="POST" style="display: none;">
-        <input type="hidden" name="enviar_pedido" value="1">
-        <input type="hidden" id="inputMesaId" name="mesa_id">
-        <input type="hidden" id="inputMesaNumero" name="mesa_numero">
-        <input type="hidden" id="inputItems" name="items">
-        <input type="hidden" id="inputTotal" name="total">
-    </form>
-
     <script>
         let pedidoActual = {
             mesaId: null,
@@ -597,38 +549,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             items: {},
             total: 0
         };
-
-        // Resetear el pedido después de un envío exitoso
-        function resetearPedido() {
-            pedidoActual = {
-                mesaId: null,
-                mesaNumero: null,
-                items: {},
-                total: 0
-            };
-            
-            // Resetear cantidades visuales
-            document.querySelectorAll('.cantidad-display').forEach(element => {
-                element.textContent = '0';
-            });
-            
-            // Remover selección de productos
-            document.querySelectorAll('.producto-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            // Remover selección de mesa
-            document.querySelectorAll('.mesa-card').forEach(mesa => {
-                mesa.classList.remove('selected');
-            });
-            
-            // Ocultar panel de pedido actual
-            document.getElementById('pedido-actual').style.display = 'none';
-            
-            // Limpiar vista del pedido
-            document.getElementById('pedido-items').innerHTML = '';
-            document.getElementById('pedido-total').textContent = 'Total: Bs/ 0.00';
-        }
 
         // Mostrar categoría
         function mostrarCategoria(categoria) {
@@ -663,7 +583,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
                 
                 if (nombre.includes(searchTerm) || categoria.includes(searchTerm)) {
                     producto.style.display = 'block';
-                    // Si el producto está en la categoría activa, mostrar resultados
                     if (producto.closest('.categoria-content').classList.contains('active')) {
                         resultadosEnCategoriaActiva = true;
                     }
@@ -672,7 +591,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
                 }
             });
 
-            // Mostrar mensaje si no hay resultados en categoría activa
             if (!resultadosEnCategoriaActiva && searchTerm !== '') {
                 const categoriaContent = document.querySelector('.categoria-content.active');
                 if (!categoriaContent.querySelector('.no-results')) {
@@ -690,8 +608,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
 
         function limpiarBusqueda() {
             document.getElementById('searchMenu').value = '';
-            // Recargar la página para restaurar el estado original
-            location.reload();
+            const productos = document.querySelectorAll('.producto-card');
+            productos.forEach(producto => {
+                producto.style.display = 'block';
+            });
+            
+            const noResults = document.querySelector('.no-results');
+            if (noResults) {
+                noResults.remove();
+            }
         }
 
         // Funciones de cantidad
@@ -791,26 +716,134 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
             }
         }
 
-        function enviarPedido() {
+        function resetearPedido() {
+            pedidoActual = {
+                mesaId: null,
+                mesaNumero: null,
+                items: {},
+                total: 0
+            };
+            
+            document.querySelectorAll('.cantidad-display').forEach(element => {
+                element.textContent = '0';
+            });
+            
+            document.querySelectorAll('.producto-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            document.querySelectorAll('.mesa-card').forEach(mesa => {
+                mesa.classList.remove('selected');
+            });
+            
+            document.getElementById('pedido-actual').style.display = 'none';
+            document.getElementById('pedido-items').innerHTML = '';
+            document.getElementById('pedido-total').textContent = 'Total: Bs/ 0.00';
+        }
+
+        function mostrarAlerta(mensaje, tipo = 'success') {
+            const alertContainer = document.getElementById('alert-container');
+            const alertClass = tipo === 'success' ? 'alert-success' : 'alert-error';
+            const icon = tipo === 'success' ? '✅' : '❌';
+            
+            const alertHTML = `
+                <div class="alert ${alertClass}">
+                    ${icon} ${mensaje}
+                </div>
+            `;
+            
+            alertContainer.innerHTML = alertHTML;
+            
+            // Auto-ocultar después de 5 segundos
+            setTimeout(() => {
+                alertContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        async function enviarPedido() {
             if (!pedidoActual.mesaId) {
-                alert('Por favor seleccione una mesa');
+                mostrarAlerta('Por favor seleccione una mesa', 'error');
                 return;
             }
             
             if (Object.keys(pedidoActual.items).length === 0) {
-                alert('Por favor agregue productos al pedido');
+                mostrarAlerta('Por favor agregue productos al pedido', 'error');
                 return;
             }
 
             if (confirm(`¿Enviar pedido a la Mesa ${pedidoActual.mesaNumero} por Bs/ ${pedidoActual.total.toFixed(2)}?`)) {
-                // Preparar datos para enviar
-                document.getElementById('inputMesaId').value = pedidoActual.mesaId;
-                document.getElementById('inputMesaNumero').value = pedidoActual.mesaNumero;
-                document.getElementById('inputItems').value = JSON.stringify(pedidoActual.items);
-                document.getElementById('inputTotal').value = pedidoActual.total;
+                try {
+                    const formData = new FormData();
+                    formData.append('mesa_id', pedidoActual.mesaId);
+                    formData.append('usuario_id', <?php echo $_SESSION['user_id']; ?>);
+                    formData.append('items', JSON.stringify(pedidoActual.items));
+                    formData.append('total', pedidoActual.total);
+
+                    const response = await fetch('procesar_pedido_ajax.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        mostrarAlerta(`✅ Pedido registrado exitosamente. N° de pedido: ${result.pedido_id}`);
+                        
+                        // Preparar datos para impresión
+                        const itemsImpresion = [];
+                        for (const [productoId, item] of Object.entries(pedidoActual.items)) {
+                            itemsImpresion.push({
+                                producto_nombre: item.nombre,
+                                categoria: item.categoria,
+                                cantidad: item.cantidad,
+                                precio: item.precio
+                            });
+                        }
+                        
+                        // Imprimir ticket
+                        imprimirTicketMinimalista(pedidoActual.mesaNumero, itemsImpresion);
+                        
+                        // Resetear pedido
+                        resetearPedido();
+                        
+                        // Actualizar mesas disponibles
+                        actualizarMesasDisponibles();
+                        
+                    } else {
+                        mostrarAlerta(`❌ Error: ${result.message}`, 'error');
+                    }
+                } catch (error) {
+                    mostrarAlerta('❌ Error de conexión', 'error');
+                    console.error('Error:', error);
+                }
+            }
+        }
+
+        async function actualizarMesasDisponibles() {
+            try {
+                const response = await fetch('obtener_mesas.php');
+                const mesas = await response.json();
                 
-                // Enviar formulario
-                document.getElementById('formPedido').submit();
+                const mesasGrid = document.getElementById('mesas-grid');
+                mesasGrid.innerHTML = '';
+                
+                if (mesas.length === 0) {
+                    mesasGrid.innerHTML = '<div class="empty-state"><p>No hay mesas disponibles</p></div>';
+                } else {
+                    mesas.forEach(mesa => {
+                        const mesaHTML = `
+                            <div class="mesa-card" 
+                                 onclick="seleccionarMesa(${mesa.id}, ${mesa.numero})"
+                                 id="mesa-${mesa.id}">
+                                <div class="mesa-numero">${mesa.numero}</div>
+                                <small>Disponible</small>
+                            </div>
+                        `;
+                        mesasGrid.innerHTML += mesaHTML;
+                    });
+                }
+            } catch (error) {
+                console.error('Error al actualizar mesas:', error);
             }
         }
 
@@ -940,28 +973,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['enviar_pedido'])) {
                 }, 300);
             };
         }
-
-        // Resetear automáticamente después de un envío exitoso
-        <?php if ($reset_pedido): ?>
-        window.onload = function() {
-            // Primero resetear el pedido actual
-            resetearPedido();
-            
-            // Luego imprimir (si hay datos)
-            <?php if (isset($_SESSION['ultimo_pedido_impresion'])): ?>
-            setTimeout(() => {
-                const datosImpresion = <?php echo json_encode($_SESSION['ultimo_pedido_impresion']); ?>;
-                imprimirTicketMinimalista(
-                    datosImpresion.mesa_numero,
-                    datosImpresion.items
-                );
-                
-                // Limpiar datos de impresión
-                <?php unset($_SESSION['ultimo_pedido_impresion']); ?>
-            }, 800);
-            <?php endif; ?>
-        };
-        <?php endif; ?>
     </script>
 </body>
 </html>

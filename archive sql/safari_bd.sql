@@ -1,5 +1,5 @@
 -- 1. Tabla Única de Usuarios
-CREATE TABLE usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
     id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(100) NOT NULL,
     usuario VARCHAR(50) UNIQUE NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE usuarios (
 );
 
 -- 2. Tabla de Mesas
-CREATE TABLE mesas (
+CREATE TABLE IF NOT EXISTS mesas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     numero INT NOT NULL,
     estado ENUM('libre', 'ocupada') DEFAULT 'libre',
@@ -18,30 +18,29 @@ CREATE TABLE mesas (
 );
 
 -- 3. Tabla de Productos
-CREATE TABLE productos (
+CREATE TABLE IF NOT EXISTS productos (
     id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(100) NOT NULL,
     precio DECIMAL(10,2) NOT NULL,
-    categoria ENUM('plato_principal', 'acompanamiento', 'bebida'),
+    categoria ENUM('plato_principal', 'acompanamiento', 'bebida', 'postre') NOT NULL,
     activo BOOLEAN DEFAULT true,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 4. Tabla de Métodos de Pago
-CREATE TABLE metodos_pago (
+CREATE TABLE IF NOT EXISTS metodos_pago (
     id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(50) NOT NULL,
     activo BOOLEAN DEFAULT true,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
--- Tabla de Pedidos
-CREATE TABLE pedidos (
+-- 5. Tabla de Pedidos (ACTUALIZADA CON MÁS ESTADOS)
+CREATE TABLE IF NOT EXISTS pedidos (
     id INT PRIMARY KEY AUTO_INCREMENT,
     mesa_id INT NOT NULL,
     usuario_id INT NOT NULL, -- Garzón que tomó el pedido
-    estado ENUM('listo', 'pagado') DEFAULT 'listo',
+    estado ENUM('pendiente', 'preparacion', 'listo', 'pagado', 'cancelado') DEFAULT 'pendiente',
     total DECIMAL(10,2) DEFAULT 0,
     propina DECIMAL(10,2) DEFAULT 0,
     metodo_pago_id INT NULL,
@@ -53,8 +52,9 @@ CREATE TABLE pedidos (
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
     FOREIGN KEY (metodo_pago_id) REFERENCES metodos_pago(id)
 );
+
 -- 6. Tabla de Items del Pedido
-CREATE TABLE pedido_items (
+CREATE TABLE IF NOT EXISTS pedido_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pedido_id INT NOT NULL,
     producto_id INT NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE pedido_items (
 );
 
 -- 7. Tabla para control de sesiones concurrentes
-CREATE TABLE sesiones_activas (
+CREATE TABLE IF NOT EXISTS sesiones_activas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     usuario_id INT NOT NULL,
     session_id VARCHAR(255) NOT NULL,
@@ -75,10 +75,3 @@ CREATE TABLE sesiones_activas (
     fecha_ultima_actividad TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
-
-
--- Insertar usuarios de prueba con contraseñas en texto plano
-INSERT INTO usuarios (nombre, usuario, password, rol) VALUES 
-('Garzón Prueba 1', 'garzon1', 'prueba123', 'garzon'),
-('Cajero Prueba 1', 'cajero1', 'prueba456', 'cajero'),
-('Administrador 1', 'admin1', 'admin789', 'admin');
